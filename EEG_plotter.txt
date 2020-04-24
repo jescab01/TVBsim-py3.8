@@ -1,0 +1,80 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
+
+
+# Load the EEG data
+n_samples, n_rows = len(EEG_data[:,0,0,0]), len(EEG_data[0,0,:,0])
+#with cbook.get_sample_data('eeg.dat') as eegfile:
+#    data = np.fromfile(eegfile, dtype=float).reshape((n_samples, n_rows))
+t = n_samples / 2 # 2=200 Hz sampling; t=ms
+
+
+# Plot the EEG
+ticklocs = []
+dmin = EEG_data.min()
+dmax = EEG_data.max()
+dr = (dmax - dmin) * 0.7  # Crowd them a bit.
+y0 = dmin
+y1 = (n_rows - 1) * dr + dmax
+fig, ax2 = plt.subplots()
+ax2.set_ylim(y0, y1)
+ax2.set_xlim(0, t)
+ax2.set_xticks(np.arange(0,t,100))
+
+segs = []
+for i in range(n_rows):
+    segs.append(np.column_stack([EEG_time, EEG_data[:,0,i,0]+i*dr]))
+    ticklocs.append(i * dr)
+
+
+offsets = np.zeros((n_rows, 2), dtype=float)
+offsets[:, 1] = ticklocs
+
+lines = LineCollection(segs)
+ax2.add_collection(lines)
+
+# Set the yticks to use axes coordinates on the y axis
+ax2.set_yticks(ticklocs)
+ax2.set_yticklabels(ch_names)
+ax2.set_xlabel('Time (s)')
+plt.show()
+
+
+
+
+## TOY EXAMPLE
+import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
+from matplotlib import colors as mcolors
+
+N = 50
+x = np.arange(N)
+# Here are many sets of y to plot vs. x
+ys = [x + i for i in x]
+
+# We need to set the plot limits, they will not autoscale
+fig, ax = plt.subplots()
+ax.set_xlim(np.min(x), np.max(x))
+ax.set_ylim(np.min(ys), np.max(ys))
+
+# colors is sequence of rgba tuples
+# linestyle is a string or dash tuple. Legal string values are
+#          solid|dashed|dashdot|dotted.  The dash tuple is (offset, onoffseq)
+#          where onoffseq is an even length tuple of on and off ink in points.
+#          If linestyle is omitted, 'solid' is used
+# See :class:`matplotlib.collections.LineCollection` for more information
+colors = [mcolors.to_rgba(c)
+          for c in plt.rcParams['axes.prop_cycle'].by_key()['color']]
+# Make a sequence of (x, y) pairs.
+line_segments = LineCollection([np.column_stack([x, y]) for y in ys],
+                               linewidths=(0.5, 1, 1.5, 2),
+                               linestyles='solid',
+                               colors=colors)
+line_segments.set_array(x)
+ax.add_collection(line_segments)
+axcb = fig.colorbar(line_segments)
+axcb.set_label('Line Number')
+ax.set_title('Line Collection with mapped colors')
+plt.sci(line_segments)  # This allows interactive changing of the colormap.
+plt.show()

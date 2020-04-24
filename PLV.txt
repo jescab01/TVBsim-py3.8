@@ -1,0 +1,143 @@
+# Calculate PLV following Lachaux (1999)
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.signal import hilbert
+
+# First step: band-pass filter
+data = EEG_data[:, :, 1:3, :]
+frequencyBand = "alpha"
+
+
+def PLV(frequencyBand, data):
+    # Defining frequency bands' limits
+    if frequencyBand in ["delta", "theta", "alpha", "beta", "gamma"]:
+        print("Calculating PLV for %s band" % frequencyBand)
+        if frequencyBand == "delta":
+            minFreq = 1
+            maxFreq = 4
+        elif frequencyBand == "theta":
+            minFreq = 4
+            maxFreq = 8
+        elif frequencyBand == "alpha":
+            minFreq = 8
+            maxFreq = 13
+        elif frequencyBand == "theta":
+            minFreq = 13
+            maxFreq = 30
+        elif frequencyBand == "theta":
+            minFreq = 30
+            maxFreq = 70
+    else:
+        print("%s is not a defined frequency band. Choose between: delta, theta, alpha, beta, gamma" % frequencyBand)
+
+    # Execute FFT and iFFT to delete non targeted frequencies
+    phase = np.ndarray((len(data[0, 0, :, 0]), len(data[:, 0, 0, 0])))
+    frequencies = np.fft.fftfreq(len(data[:, 0, 1, 0]), 0.0005)  # with sampling rate
+    for channel in range(len(data[0, 0, :, 0])):
+        # FFT transforms the signal from time domain to frequency domain
+        fft = np.fft.fft(data[:, 0, channel, 0])  # FFT
+        # Delete signal frequency components out of scope
+        fft[(frequencies < -maxFreq) | ((-minFreq < frequencies) & (frequencies < minFreq)) | (
+                frequencies > maxFreq)] = 0
+        # Inverse FFT transform signal back from frequency to time domain
+        filteredSignal = np.real(np.fft.ifft(fft))
+        # Execute Hilbert transform to extract analytical signal (i.e. with instantaneous phase and amplitude
+        analyticalSignal = hilbert(filteredSignal)
+        # Save instantaneous signal phase
+        phase[channel] = np.unwrap(np.angle(analyticalSignal))
+
+    PLV = np.ndarray(((len(data[0, 0, :, 0])), len(data[0, 0, :, 0])))
+    for channel1 in range(len(data[0, 0, :, 0])):
+        for channel2 in range(len(data[0, 0, :, 0])):
+            phaseDifference = phase[channel1] - phase[channel2]
+            pdCos = np.cos(phaseDifference)  # Phase difference cosine
+            pdSin = np.sin(phaseDifference)  # Phase difference sine
+            PLV[channel1, channel2] = np.sqrt(sum(pdCos) ** 2 + sum(pdSin) ** 2) / len(data[:, 0, 0, 0])
+
+
+
+    difphase = phase1 - phase1m
+    cosDifPha = sum(np.cos(difphase))
+    sinDifPha = sum(np.sin(difphase))
+    plv = np.sqrt(cosDifPha ** 2 + sinDifPha ** 2) / len(
+        phase1)  ## Al ppt de gianluca le falta la division por el numero de
+    ## timepoints para obtener un valor entre 0 y 1.
+
+
+#######################################
+## Example
+t = np.arange(0, 10, 0.01)
+
+sig1 = np.sin(2 * np.pi * t)  # 1 Hz
+sig3 = np.sin(2 * np.pi * 3 * t)  # 3 Hz
+sig1moved = np.sin(2 * np.pi * t + np.pi / 4)
+
+plt.figure(1)
+plt.title("Signals")
+plt.plot(t, sig1)
+plt.plot(t, sig3)
+plt.xlabel("time")
+plt.ylabel("amplitude")
+
+a = sig1 + sig3
+
+fft = np.fft.fft(a)  # FFT
+fft = fft[range(int(len(a) / 2))]  # Select just positive side of the symmetric FFT
+freqs = np.arange(len(a) / 2)
+freqs = freqs / 10  # 1.024secs = 1024ms
+
+plt.figure(2)
+plt.title("FFT")
+plt.plot(freqs, abs(fft))
+plt.xlabel("Frequency - (Hz)")
+plt.ylabel("Module")
+
+freqs1 = freqs[freqs > 2]
+fft1 = fft
+fft1[freqs < 2] = 0
+
+plt.figure(3)
+plt.title("FFT")
+plt.plot(freqs, abs(fft1))
+plt.xlabel("Frequency - (Hz)")
+plt.ylabel("Module")
+
+filtered = np.fft.ifft(fft1)  # Te devuelve la señal en complejo, pero se puede obviar la parte imaginaria. Además
+# te la devuelve con la mitad de sampling rate, pero representando el mismo espacio temporal. Esto tienes que ajustarlo
+# si quisieras plotearlo.
+plt.figure(4)
+plt.title("FFT")
+plt.plot(np.arange(0, 10, 10 / len(filtered)), np.real_if_close(filtered))
+plt.xlabel("Frequency - (Hz)")
+plt.ylabel("Module")
+
+## Aplicar Hilbert transform a signal  para obtener un plot de fase.
+# con hilbert tranform obtienes la señal analitica que te señala en cada time point its phase and amplitude
+
+from scipy.signal import hilbert, chirp
+
+h1 = hilbert(sig1)
+h1m = hilbert(sig1moved)
+
+phase1 = np.unwrap(np.angle(h1))
+phase1m = np.unwrap(np.angle(h1m))
+
+plt.figure(5)
+plt.title("Signals")
+plt.plot(t, sig1)
+plt.plot(t, )
+plt.plot(t, phase)
+plt.xlabel("time")
+plt.ylabel("amplitude")
+
+for i in range(len(phase)):
+    if phase[i] > np.pi:
+        phase[i:] = phase[i:] - 2 * np.pi
+
+# calculate phase lock value
+difphase = phase1 - phase1m
+cosDifPha = sum(np.cos(difphase))
+sinDifPha = sum(np.sin(difphase))
+plv = np.sqrt(cosDifPha ** 2 + sinDifPha ** 2) / len(
+    phase1)  ## Al ppt de gianluca le falta la division por el numero de
+## timepoints para obtener un valor entre 0 y 1.
