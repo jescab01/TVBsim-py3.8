@@ -1,59 +1,33 @@
 # This is going to be a script with useful functions I will be using frequently.
-# This are the functions:
-#   -
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.collections import LineCollection
 from scipy.signal import firwin, filtfilt, hilbert
+import plotly.graph_objects as go  # for data visualisation
+import plotly.io as pio
+
 
 def timeseriesPlot(signals, timepoints, ch_names):
-    # Load the EEG data
-    n_rows, n_samples = len(signals[:, 0]), len(signals[0])
-
-    # Plot the EEG
-    ticklocs = []
-    dmin = signals.min()
-    dmax = signals.max()
-    dr = (dmax - dmin) * 0.7  # Crowd them a bit.
-    y0 = dmin
-    y1 = (n_rows - 1) * dr + dmax
-    fig, ax2 = plt.subplots()
-    ax2.set_ylim(y0, y1)
-    ax2.set_xlim(0, times[-1])
-    ax2.set_xticks(np.arange(0, times[-1], 100))
-
-    segs = []
-    for i in range(n_rows):
-        segs.append(np.column_stack([times, signals[i, :] + i * dr]))
-        ticklocs.append(i * dr)
-
-    offsets = np.zeros((n_rows, 2), dtype=float)
-    offsets[:, 1] = ticklocs
-
-    lines = LineCollection(segs)
-    ax2.add_collection(lines)
-
-    # Set the yticks to use axes coordinates on the y axis
-    ax2.set_yticks(ticklocs)
-    ax2.set_yticklabels(ch_names)
-    ax2.set_xlabel('Time (s)')
+    fig = go.Figure(layout=dict(xaxis=dict(title='time'), yaxis=dict(title='Voltage')))
+    for ch in range(len(signals)):
+        fig.add_scatter(x=timepoints, y=signals[ch], name=ch_names[ch])
+    pio.write_html(fig, file="figures/TimeSeries.html", auto_open=True)
 
 
-def FFTplot(signals, simulation_length):
-    for i in range(len(signals[:, 0])):
-        fft = abs(np.fft.fft(signals[i, :]))  # FFT for each channel signal
-        fft = fft[range(int(len(signals) / 2))]  # Select just positive side of the symmetric FFT
+def FFTplot(signals, simLength, ch_names):
+    fig = go.Figure(layout=dict(xaxis=dict(title='Frequency'), yaxis=dict(title='Module')))
+    for i in range(len(signals)):
+        fft = abs(np.fft.fft(signals[i]))  # FFT for each channel signal
+        fft = fft[range(int(len(signals[0]) / 2))]  # Select just positive side of the symmetric FFT
         freqs = np.arange(len(signals[0]) / 2)
-        freqs = freqs / simLength  # (e.g. 1.024secs = 1024ms)
+        freqs = freqs / (simLength/1000)  # simLength (ms) / 1000 -> segs
 
-        plt.plot(freqs, fft)
-        plt.title("FFT")
-        plt.xlabel("Frequency - (Hz)")
-        plt.ylabel("Module")
+        fig.add_scatter(x=freqs, y=fft, name=ch_names[i])
+
+    pio.write_html(fig, file="figures/FFT.html", auto_open=True)
 
 
-def bandpassFIRfilter(signals, lowcut, highcut, windowtype, samplingRate, plot="OFF"):
+def bandpassFIRfilter(signals, lowcut, highcut, windowtype, samplingRate, times, plot="OFF"):
     """
      Truncated sinc function in whatever order, needs to be windowed to enhance frequency response at side lobe and rolloff.
      Some famous windows are: bartlett, hann, hamming and blackmann.
@@ -61,19 +35,49 @@ def bandpassFIRfilter(signals, lowcut, highcut, windowtype, samplingRate, plot="
      https://en.wikipedia.org/wiki/Window_function
      https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.get_window.html#scipy.signal.get_window
     """
-    order = int(len(signals[0,:]) / 3)
+    order = int(len(signals[0, :]) / 3)
     firCoeffs = firwin(numtaps=order + 1, cutoff=[lowcut, highcut], window=windowtype, pass_zero="bandpass", fs=samplingRate)
-    filterSignals = filtfilt(b=filterCoeffs, a=[1.0], x=signal, padlen=3 * order) # a=[1.0] as it is FIR filter (not IIR).
+    filterSignals = filtfilt(b=firCoeffs, a=[1.0], x=signals, padlen=3 * order) # a=[1.0] as it is FIR filter (not IIR).
 
     if plot == "ON":
         plt.plot(range(len(firCoeffs)), firCoeffs) # Plot filter shape
         plt.title("FIR filter shape w/ %s windowing" % windowtype)
-        for i in range(len(signals)):
+        for i in range(1, 10):
             plt.figure(i+1)
-            plt.plot(range(len(signals[0])), signals[i])
-            plt.plot(range(len(signals[0])), filterSignals[i])
-
+            plt.xlabel("time (ms)")
+            plt.plot(times, signals[i], label="Raw signal")
+            plt.plot(times, filterSignals[i], label="Filtered Signal")
+        plt.show()
+        plt.savefig("figures/filterSample%s" % str(i))
     return filterSignals
+
+
+def plotConversions(n_signals, signals, timepoints, filterSignals, ch_names):
+
+    phase = np.ndarray((len(filterSignals), len(filterSignals[0])))
+    amplitude_envelope = np.ndarray((len(filterSignals), len(filterSignals[0])))
+
+    for channel in range(n_signals):
+        # Hilbert transform to extract analytical signal (i.e. with instantaneous phase and amplitude). Scipy function.
+        analyticalSignal = hilbert(filterSignals[channel])
+        # Save instantaneous signal phase by channel
+        phase[channel] = np.unwrap(np.angle(analyticalSignal))
+        # Save absolute value of analytic signal
+        amplitude_envelope[channel] = np.abs(analyticalSignal)
+
+        for i in range(len(phase[channel])):
+            if phase[channel, i] > np.pi:
+                phase[channel, i:] = phase[channel, i:] - 2 * np.pi
+        phase[channel]=phase[channel]*1000
+        fig = go.Figure(layout=dict(xaxis=dict(title='Time (ms)'), yaxis=dict(title='Amplitude')))
+        fig.add_scatter(x=timepoints, y=signals[channel], name="Raw signal")
+        fig.add_scatter(x=timepoints, y=filterSignals[channel], name="Filtered signal")
+        fig.add_scatter(x=timepoints, y=phase[channel], name="Instantaneous phase")
+        fig.add_scatter(x=timepoints, y=amplitude_envelope[channel], name="Amplitude envelope")
+        fig.update_layout(title="%s channel conversions" % ch_names[channel])
+        pio.write_html(fig, file="figures/%s_channel_conversions.html" % ch_names[channel], auto_open=True)
+
+
 
 def CORR(signals, ch_names, plot="OFF"):
     """
@@ -92,24 +96,11 @@ def CORR(signals, ch_names, plot="OFF"):
         for channel2 in range(len(normalSignals)):
             CORR[channel1][channel2] = sum(normalSignals[channel1] * normalSignals[channel2]) / len(normalSignals[0])
 
+
     if plot == "ON":
-        # Plot CORR
-        fig, ax = plt.subplots()
-        im = ax.imshow(CORR)
-
-        # We want to show all ticks...
-        ax.set_xticks(np.arange(len(CORR)))
-        ax.set_yticks(np.arange(len(CORR)))
-        # ... and label them with the respective list entries
-        ax.set_xticklabels(ch_names)
-        ax.set_yticklabels(ch_names)
-
-        # Rotate the tick labels and set their alignment.
-        plt.setp(ax.get_xticklabels(), rotation=65, ha="right",
-                 rotation_mode="anchor")
-
-        ax.set_title("Pearson Correlation")
-        fig.tight_layout()
+        fig = go.Figure(data=go.Heatmap(z=CORR, x=ch_names, y=ch_names, colorscale='Viridis'))
+        fig.update_layout(title='Correlation')
+        pio.write_html(fig, file="figures/CORR.html", auto_open=True)
 
     return CORR
 
@@ -134,23 +125,9 @@ def PLV(filterSignals, ch_names, plot="OFF"):
             PLV[channel1, channel2] = np.sqrt(sum(pdCos) ** 2 + sum(pdSin) ** 2) / len(filterSignals[0])
 
     if plot == "ON":
-        # Plot PLV
-        fig, ax = plt.subplots()
-        im = ax.imshow(PLV)
-
-        # We want to show all ticks...
-        ax.set_xticks(np.arange(len(PLV)))
-        ax.set_yticks(np.arange(len(PLV)))
-        # ... and label them with the respective list entries
-        ax.set_xticklabels(ch_names)
-        ax.set_yticklabels(ch_names)
-
-        # Rotate the tick labels and set their alignment.
-        plt.setp(ax.get_xticklabels(), rotation=65, ha="right",
-                 rotation_mode="anchor")
-
-        ax.set_title("Phase Locking Value")
-        fig.tight_layout()
+        fig = go.Figure(data=go.Heatmap(z=PLV, x=ch_names, y=ch_names, colorscale='Viridis'))
+        fig.update_layout(title='Phase Locking Value')
+        pio.write_html(fig, file="figures/PLV.html", auto_open=True)
 
     return PLV
 
@@ -170,34 +147,18 @@ def PLI(filterSignals, ch_names, plot="OFF"):
     for channel1 in range(len(filterSignals)):
         for channel2 in range(len(filterSignals)):
             phaseDifference = phase[channel1] - phase[channel2]
-            pdCos = np.cos(phaseDifference)  # Phase difference cosine
-            pdSin = np.sin(phaseDifference)  # Phase difference sine
             PLI[channel1, channel2] = np.absolute(sum(np.sign(phaseDifference))/len(phaseDifference))
 
-    PLI[PLI==0]=1
+
 
     if plot == "ON":
-        # Plot PLV
-        fig, ax = plt.subplots()
-        im = ax.imshow(PLI)
-
-        # We want to show all ticks...
-        ax.set_xticks(np.arange(len(PLI)))
-        ax.set_yticks(np.arange(len(PLI)))
-        # ... and label them with the respective list entries
-        ax.set_xticklabels(ch_names)
-        ax.set_yticklabels(ch_names)
-
-        # Rotate the tick labels and set their alignment.
-        plt.setp(ax.get_xticklabels(), rotation=65, ha="right",
-                 rotation_mode="anchor")
-
-        ax.set_title("Phase Lag Index")
-        fig.tight_layout()
+        fig = go.Figure(data=go.Heatmap(z=PLI, x=ch_names, y=ch_names, colorscale='Viridis'))
+        fig.update_layout(title='Phase Lag Index')
+        pio.write_html(fig, file="figures/PLI.html", auto_open=True)
 
     return PLI
 
-def AEC(filterSignals, nEpochs):
+def AEC(filterSignals, nEpochs, ch_names, plot="OFF"):
     """
     nEpochs should be a divisor of number of signal points.
     """
@@ -229,23 +190,9 @@ def AEC(filterSignals, nEpochs):
             AEC[channel1, channel2]=np.average(AECs[channel1,channel2])
 
     if plot == "ON":
-        # Plot AEC
-        fig, ax = plt.subplots()
-        im = ax.imshow(AEC)
-
-        # We want to show all ticks...
-        ax.set_xticks(np.arange(len(AEC)))
-        ax.set_yticks(np.arange(len(AEC)))
-        # ... and label them with the respective list entries
-        ax.set_xticklabels(ch_names)
-        ax.set_yticklabels(ch_names)
-
-        # Rotate the tick labels and set their alignment.
-        plt.setp(ax.get_xticklabels(), rotation=65, ha="right",
-                 rotation_mode="anchor")
-
-        ax.set_title("Amplitude Envelope Correlation")
-        fig.tight_layout()
+        fig = go.Figure(data=go.Heatmap(z=AEC, x=ch_names, y=ch_names, colorscale='Viridis'))
+        fig.update_layout(title='Amplitude Envelope Correlation')
+        pio.write_html(fig, file="figures/AEC.html", auto_open=True)
 
     return AEC
 

@@ -1,2 +1,5 @@
 tvb-library==2.0.3
-MNE==0.20.0
+plotly==4.6.0
+
+
+# Check version  pip freeze | findstr plotly

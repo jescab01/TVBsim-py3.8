@@ -69,6 +69,11 @@ plt.plot(range(len(signal)), filfil)
 
 
 
-
-
+# plotting with plotly
+import plotly.graph_objects as go  # for data visualisation
+signals=EEG_data
+fig = go.Figure(layout=dict(xaxis=dict(title='time'),yaxis=dict(title='Voltage')))
+for ch in range(len(EEG_data)):
+    fig.add_scatter(x=EEG_time, y=EEG_data[ch], name=ch_names[ch])
+fig.show()
 
