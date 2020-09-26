@@ -1,0 +1,13 @@
+Varias opciones estoy encontrando:
+
+EL churro con - FFT que hice al principio. Jaja, lo pero es que aún no entiendo por qué es un churro.
+
+- scipy.signal.lfilter
+- scipy.signal.butter (una especie de handmade butterworth filter donde debo determinar el orden y no se como)
+
+- mne.filter.data_filter (Un filtro ya preparado del paquete de MNE, en el que puedes elegir entre FIR Finite Impulse Responses
+or IIR Inifinte impulse responses dentro de la variable "method")[Este podría contener el siguiente, aunque sería mas simple
+ir directamente al scipy me parece a mí].
+
+- scipy.signal.iirfilter (aquí puedes elegir el tipo de filtro que quieres dentro de los IIR: Butterworth : ‘butter’,
+Chebyshev I : ‘cheby1’, Chebyshev II : ‘cheby2’, Cauer/elliptic: ‘ellip’, Bessel/Thomson: ‘bessel’).
